@@ -1,0 +1,16 @@
+{
+  "name": "emojilock",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "BSD-2-Clause",
+  "dependencies": {
+    "base-emoji": "^0.3.0",
+    "bs58": "^2.0.1",
+    "pluralize": "^1.1.2"
+  }
+}
