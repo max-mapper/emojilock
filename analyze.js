@@ -10,6 +10,7 @@ Object.keys(emoji).forEach(function (k) {
 
   // get common english word index
   var ranks = []
+  emoji[k].keywords.push(k) // include name
   emoji[k].keywords.forEach(function (kw) {
     if (kw === 'custom_') return
     var words = kw.replace('_', ' ').replace('-', ' ').split(' ')
@@ -32,6 +33,5 @@ Object.keys(emoji).forEach(function (k) {
   ranked.push({char: emoji[k].char, name: k, rank: rank})
 })
 
-ranked = ranked.sort(function (a, b) { return a.rank - b.rank })
-
-console.log(JSON.stringify(ranked, null))
+ranked = ranked.sort(function (a, b) { return a.rank - b.rank }).map(function (em) { return em.char })
+console.log(ranked.join(''))
