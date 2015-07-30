@@ -25,7 +25,7 @@ if no args are specified, will try to read the file `~/.mlck/profile.json` to ge
 ## decode
 
 ```
-emojilock <emoji>
+emojilock decode <emoji>
 ```
 
 will convert emoji back into a minilock id
