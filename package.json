@@ -4,12 +4,15 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node test.js"
+  },
+  "bin": {
+    "emojilock": "cli.js"
   },
   "author": "",
   "license": "BSD-2-Clause",
   "dependencies": {
-    "base-emoji": "^0.4.0",
+    "base-emoji": "^1.0.1",
     "blake2s-js": "^1.0.3",
     "bs58": "^2.0.1",
     "pluralize": "^1.1.2"

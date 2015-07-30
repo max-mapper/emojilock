@@ -4,15 +4,12 @@ var baseEmoji = require('base-emoji')
 
 module.exports.encode = function (id) {
   var key = publicKeyFromId(id)
-  console.log(key, key.length, key.toString('hex'))
   var emoji = baseEmoji.toUnicode(key)
-  console.log(JSON.stringify(emoji))
   return emoji
 }
 
 module.exports.decode = function (emoji) {
   var bytes = baseEmoji.fromUnicode(emoji)
-  console.log(bytes, bytes.length)
   return idFromPublicKey(bytes)
 }
 
