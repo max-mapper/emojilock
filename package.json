@@ -15,6 +15,8 @@
     "base-emoji": "^2.0.0",
     "blake2s-js": "git@github.com:dchest/blake2s-js.git#64e449f020c47b88f3edb417efe0fbe65ebdf86e",
     "bs58": "git@github.com:cryptocoinjs/bs58.git#d3ee704d5f6e9d450333395ba17ce5c654f19d72",
+    "debug": "^2.2.0",
+    "duplexify": "^3.4.2",
     "nacl-stream": "git@github.com:dchest/nacl-stream-js.git#cb00b7f06a953ebb7e3895c3a22d6d05208d25a5",
     "scrypt-async": "git@github.com:dchest/scrypt-async-js.git#ac2e88a22fbb8856ab2f95e85430900f54fec1c9",
     "tweetnacl": "git@github.com:dchest/tweetnacl-js.git#abfbce7c68c8ad0b3b8a90b769e1f67885237aac",
