@@ -1,6 +1,6 @@
 {
   "name": "emojilock",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "convert minilock ids to and from emoji",
   "main": "index.js",
   "scripts": {
