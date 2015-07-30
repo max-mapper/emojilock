@@ -1,7 +1,7 @@
 {
   "name": "emojilock",
   "version": "1.0.0",
-  "description": "",
+  "description": "convert minilock ids to and from emoji",
   "main": "index.js",
   "scripts": {
     "test": "node test.js"
@@ -9,7 +9,7 @@
   "bin": {
     "emojilock": "cli.js"
   },
-  "author": "",
+  "author": "max ogden",
   "license": "BSD-2-Clause",
   "dependencies": {
     "base-emoji": "^1.0.1",
@@ -19,5 +19,19 @@
   },
   "devDependencies": {
     "tape": "^4.0.1"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/maxogden/emojilock.git"
+  },
+  "keywords": [
+    "minilock",
+    "ed25519",
+    "djb",
+    "nacl"
+  ],
+  "bugs": {
+    "url": "https://github.com/maxogden/emojilock/issues"
+  },
+  "homepage": "https://github.com/maxogden/emojilock#readme"
 }
