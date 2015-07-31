@@ -6,8 +6,7 @@ var nacl = require('tweetnacl')
 var naclStream = require('nacl-stream')
 var scrypt = require('scrypt-async')
 var debug = require('debug')('minilock')
-var streams = require('stream')
-var duplexify = require('duplexify')
+var stream = require('stream')
 
 module.exports.publicKeyFromId = publicKeyFromId
 module.exports.idFromPublicKey = idFromPublicKey
@@ -255,16 +254,15 @@ function encryptStreamWithKeyPair (keyPair, toIds) {
 
   var inputByteCount = 0
 
-  var input = new streams.Writable()
-  var output = new streams.PassThrough()
+  var transform = new stream.Transform()
 
-  input._write = function (chunk, enc, cb) {
+  transform._transform = function (chunk, enc, cb) {
     inputByteCount += chunk.length
     encryptChunk(chunk, encryptor, encrypted, hash)
     cb()
   }
 
-  input.on('finish', function () {
+  transform._flush = function (cb) {
     encryptChunk(null, encryptor, encrypted, hash)
     encryptor.clean()
 
@@ -290,15 +288,15 @@ function encryptStreamWithKeyPair (keyPair, toIds) {
       // The file always begins with the magic bytes 0x6d696e694c6f636b.
       new Buffer('miniLock'), headerLength, new Buffer(header)
     ])
-    output.write(outputHeader)
+    this.push(outputHeader)
 
     encrypted.forEach(function (chunk) {
-      output.write(chunk)
-    })
-    output.end()
-  })
+      this.push(chunk)
+    }.bind(this))
+    cb()
+  }
 
-  return duplexify(input, output)
+  return transform
 }
 
 function decryptStream (email, passphrase, cb) {
@@ -323,10 +321,9 @@ function decryptStreamWithKeyPair (keyPair) {
   var buffer = new Buffer(0)
   var originalFilename = null
 
-  var input = new streams.Writable()
-  var output = new streams.PassThrough()
+  var transform = new stream.Transform()
 
-  input._write = function (chunk, enc, cb) {
+  transform._transform = function (chunk, enc, cb) {
     buffer = Buffer.concat([buffer, chunk])
 
     if (!header) {
@@ -375,17 +372,18 @@ function decryptStreamWithKeyPair (keyPair) {
       }
 
       decrypted.forEach(function (chunk) {
-        output.write(chunk)
-      })
+        this.push(chunk)
+      }.bind(this))
     }
     cb()
   }
-  input.on('finish', function () {
+  transform._flush = function (cb) {
     if (nacl.util.encodeBase64(hash.digest()) !== decryptInfo.fileInfo.fileHash) {
       // The 32-byte BLAKE2 hash of the ciphertext must match the value in
       // the header.
-      output.emit(new Error('integrity check failed'))
+      return cb(new Error('integrity check failed'))
     }
-  })
-  return duplexify(input, output)
+    cb()
+  }
+  return transform
 }
