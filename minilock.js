@@ -5,7 +5,6 @@ var BLAKE2s = require('blake2s-js')
 var nacl = require('tweetnacl')
 var naclStream = require('nacl-stream')
 var scrypt = require('scrypt-async')
-var zxcvbn = require('zxcvbn')
 var debug = require('debug')('minilock')
 var streams = require('stream')
 var duplexify = require('duplexify')
@@ -18,11 +17,11 @@ module.exports.keyPairFromSecret = keyPairFromSecret
 module.exports.validateKey = validateKey
 module.exports.validateId = validateId
 module.exports.generateId = generateId
-module.exports.asciiArmor = asciiArmor
 module.exports.makeHeader = makeHeader
 module.exports.encryptChunk = encryptChunk
 module.exports.decryptChunk = decryptChunk
 module.exports.encryptStream = encryptStream
+module.exports.decryptStream = decryptStream
 
 var ENCRYPTION_CHUNK_SIZE = 256 // used in encryptChunk
 
@@ -89,29 +88,6 @@ function generateId (email, passphrase, callback) {
   })
 }
 
-function asciiArmor (data, indent) {
-  // should be own module implementing: https://tools.ietf.org/html/rfc4880#section-6
-  var ARMOR_WIDTH = 64
-  var ascii = new Buffer(data).toString('base64')
-
-  var lines = []
-
-  if ((indent = Math.max(0, indent | 0)) > 0) {
-    // Indent first line.
-    lines.push(ascii.slice(0, ARMOR_WIDTH - indent))
-
-    ascii = ascii.slice(ARMOR_WIDTH - indent)
-  }
-
-  while (ascii.length > 0) {
-    lines.push(ascii.slice(0, ARMOR_WIDTH))
-
-    ascii = ascii.slice(ARMOR_WIDTH)
-  }
-
-  return lines.join('\n')
-}
-
 function hex (data) {
   return new Buffer(data).toString('hex')
 }
@@ -162,6 +138,45 @@ function makeHeader (ids, senderInfo, fileInfo) {
   return JSON.stringify(header)
 }
 
+function extractDecryptInfo (header, secretKey) {
+  var decryptInfo = null
+
+  var ephemeral = nacl.util.decodeBase64(header.ephemeral)
+
+  for (var i in header.decryptInfo) {
+    var nonce = nacl.util.decodeBase64(i)
+
+    debug('Trying nonce ' + hex(nonce))
+
+    decryptInfo = nacl.util.decodeBase64(header.decryptInfo[i])
+    decryptInfo = nacl.box.open(decryptInfo, nonce, ephemeral, secretKey)
+
+    if (decryptInfo) {
+      decryptInfo = JSON.parse(nacl.util.encodeUTF8(decryptInfo))
+
+      debug('Recipient ID is ' + decryptInfo.recipientID)
+      debug('Sender ID is ' + decryptInfo.senderID)
+
+      decryptInfo.fileInfo = nacl.util.decodeBase64(decryptInfo.fileInfo)
+      decryptInfo.fileInfo = nacl.box.open(decryptInfo.fileInfo, nonce, publicKeyFromId(decryptInfo.senderID), secretKey)
+
+      decryptInfo.fileInfo = JSON.parse(
+          nacl.util.encodeUTF8(decryptInfo.fileInfo)
+          )
+
+      debug('File key is ' + hex(nacl.util.decodeBase64(
+              decryptInfo.fileInfo.fileKey)))
+      debug('File nonce is ' + hex(nacl.util.decodeBase64(
+              decryptInfo.fileInfo.fileNonce)))
+      debug('File hash is ' + hex(nacl.util.decodeBase64(
+              decryptInfo.fileInfo.fileHash)))
+      break
+    }
+  }
+
+  return decryptInfo
+}
+
 function encryptChunk (chunk, encryptor, output, hash) {
   if (chunk && chunk.length > ENCRYPTION_CHUNK_SIZE) {
     // slice chunk
@@ -205,14 +220,14 @@ function decryptChunk (chunk, decryptor, output, hash) {
   return chunk
 }
 
-function encryptStream (passphrase, email, toId, cb) {
+function encryptStream (email, passphrase, toId, cb) {
   getKeyPair(passphrase, email, function (keyPair) {
     cb(null, encryptStreamWithKeyPair(keyPair, toId))
   })
 }
 
-// keypair from passphrase/email  getKeyPair(passphrase, email, cb)
-function encryptStreamWithKeyPair (keyPair, toId) {
+function encryptStreamWithKeyPair (keyPair, toIds) {
+  if (!Array.isArray(toIds)) toIds = [toIds]
   var fromId = idFromPublicKey(keyPair.publicKey)
   debug('Our miniLock ID is ' + fromId)
 
@@ -264,7 +279,7 @@ function encryptStreamWithKeyPair (keyPair, toId) {
     }
 
     // TODO: Include self, multiple recipients
-    var header = makeHeader([toId], senderInfo, fileInfo)
+    var header = makeHeader(toIds, senderInfo, fileInfo)
 
     var headerLength = new Buffer(4)
     headerLength.writeUInt32LE(header.length)
@@ -280,7 +295,97 @@ function encryptStreamWithKeyPair (keyPair, toId) {
     encrypted.forEach(function (chunk) {
       output.write(chunk)
     })
+    output.end()
   })
 
+  return duplexify(input, output)
+}
+
+function decryptStream (email, passphrase, cb) {
+  getKeyPair(passphrase, email, function (keyPair) {
+    cb(null, decryptStreamWithKeyPair(keyPair))
+  })
+}
+
+function decryptStreamWithKeyPair (keyPair) {
+  debug('Our public key is ' + hex(keyPair.publicKey))
+  debug('Our secret key is ' + hex(keyPair.secretKey))
+
+  var toId = idFromPublicKey(keyPair.publicKey)
+
+  debug('Our miniLock ID is ' + toId)
+
+  var headerLength = -1
+  var header = null
+  var decryptInfo = null
+  var decryptor = null
+  var hash = new BLAKE2s(32)
+  var buffer = new Buffer(0)
+  var originalFilename = null
+
+  var input = new streams.Writable()
+  var output = new streams.PassThrough()
+
+  input._write = function (chunk, enc, cb) {
+    buffer = Buffer.concat([buffer, chunk])
+
+    if (!header) {
+      // parse header
+      if (headerLength < 0 && buffer.length >= 12) {
+        // header length + magic number
+        var magicNumber = buffer.slice(0, 8).toString()
+        if (magicNumber !== 'miniLock') return cb(new Error('incorrect magic number'))
+        headerLength = buffer.readUIntLE(8, 4, true)
+
+        if (headerLength > 0x3fffffff) return cb(new Error('header too long'))
+        buffer = new Buffer(buffer.slice(12))
+      }
+
+      if (headerLength > -1) {
+        // Look for the JSON opening brace.
+        if (buffer.length > 0 && buffer[0] !== 0x7b) return cb(new Error('JSON opening bracket missing'))
+
+        if (buffer.length >= headerLength) {
+          // Read the header and parse the JSON object.
+          header = JSON.parse(buffer.slice(0, headerLength).toString())
+          if (header.version !== 1) return cb(new Error('unsupported version'))
+          if (!validateKey(header.ephemeral)) return cb(new Error('could not validate key'))
+
+          decryptInfo = extractDecryptInfo(header, keyPair.secretKey)
+          debug('Recipient: ' + decryptInfo.recipientID)
+          if (!decryptInfo || decryptInfo.recipientID !== toId) return cb(new Error('Not a recipient'))
+          buffer = buffer.slice(headerLength)
+        }
+      }
+    }
+    if (decryptInfo) {
+      if (!decryptor) {
+        decryptor = naclStream.stream.createDecryptor(
+            nacl.util.decodeBase64(decryptInfo.fileInfo.fileKey),
+            nacl.util.decodeBase64(decryptInfo.fileInfo.fileNonce),
+            0x100000)
+      }
+      var decrypted = []
+      // Decrypt as many chunks as possible.
+      buffer = decryptChunk(buffer, decryptor, decrypted, hash)
+
+      if (!originalFilename && decrypted.length > 0) {
+        // The very first chunk is the original filename.
+        originalFilename = decrypted.shift().toString()
+      }
+
+      decrypted.forEach(function (chunk) {
+        output.write(chunk)
+      })
+    }
+    cb()
+  }
+  input.on('finish', function () {
+    if (nacl.util.encodeBase64(hash.digest()) !== decryptInfo.fileInfo.fileHash) {
+      // The 32-byte BLAKE2 hash of the ciphertext must match the value in
+      // the header.
+      output.emit(new Error('integrity check failed'))
+    }
+  })
   return duplexify(input, output)
 }
