@@ -1,7 +1,7 @@
 var baseEmoji = require('base-emoji')
 var minilock = require('minilock')
-var through = require('through2')
 var pumpify = require('pumpify')
+var armor = require('emoji-armor')
 
 module.exports.encode = encode
 module.exports.decode = decode
@@ -24,9 +24,7 @@ function encrypt (email, passphrase, toId, cb) {
     if (err) return cb(err)
     cb(null, pumpify(
       stream,
-      through(function (chunk, enc, cb) {
-        cb(null, baseEmoji.toUnicode(chunk))
-      })
+      armor('😊🔒')
     ))
   })
 }
@@ -35,9 +33,7 @@ function decrypt (email, passphrase, cb) {
   minilock.decryptStream(email, passphrase, function (err, stream) {
     if (err) return cb(err)
     cb(null, pumpify(
-      through(function (chunk, enc, cb) {
-        cb(null, baseEmoji.fromUnicode(chunk.toString('utf8')))
-      }),
+      armor.decode(),
       stream
     ))
   })
