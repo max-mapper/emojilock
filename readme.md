@@ -36,14 +36,14 @@ emojilock decode <emoji>
 
 will convert emoji back into a minilock id
 
-## decrypt
+## encrypt
 ```
 emojilock encrypt <yourEmail> <yourPassphrase> <recipientsEmojiID>
 ```
 will encrypt a signed message to `recipientsEmojiID`
 
 
-## encrypt
+## decrypt
 
 ```
 emojilock decrypt <yourEmail> <yourPassphrase> 
